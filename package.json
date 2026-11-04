@@ -1,0 +1,61 @@
+{
+  "name": "dsh-next-message",
+  "version": "0.1.3",
+  "description": "Background next-message suggestions for official DeepSeek Harness",
+  "type": "module",
+  "exports": {
+    ".": "./host.mjs",
+    "./client": "./client.js"
+  },
+  "files": [
+    "host.mjs",
+    "client.js",
+    "cordis.patch.yml",
+    "skills",
+    "README.md",
+    "README.zh.md"
+  ],
+  "engines": {
+    "node": ">=24.9",
+    "dsh": "0.2.1-rc.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-input-trigger",
+        "@deepseek-ai/dsh-client-shortcuts",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "external": [
+        "react"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/schemastery": "~3.18.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/schemastery": "~3.18.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dopetaiga/dsh-next-message.git"
+  },
+  "homepage": "https://github.com/Dopetaiga/dsh-next-message#readme",
+  "bugs": {
+    "url": "https://github.com/Dopetaiga/dsh-next-message/issues"
+  }
+}

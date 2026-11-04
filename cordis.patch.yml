@@ -1,0 +1,14 @@
+- insert:
+    - id: next-message
+      name: dsh-next-message
+      dsh.client: true
+      config:
+        automatic: true
+        automaticSkipTurns: 2
+        contextExchanges: 2
+        contextHeadChars: 300
+        contextTailChars: 900
+        maxInputBytes: 48000
+        maxOutputTokens: 2048
+        timeoutMs: 30000
+        pollIntervalMs: 750
