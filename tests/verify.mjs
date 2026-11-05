@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 if (!process.argv[2] || !process.argv[3]) throw new Error('Usage: node tests/verify.mjs <desktop-install-directory> <dsh-source-checkout>')
 const sourceRequire = createRequire(join(resolve(process.argv[3]), 'apps/web/package.json'))
-const { chromium } = await import(pathToFileURL(sourceRequire.resolve('playwright')).href)
+const { chromium } = sourceRequire('playwright')
 
 const project = fileURLToPath(new URL('../', import.meta.url))
 const install = resolve(process.argv[2])
@@ -57,7 +57,7 @@ try {
   assert.equal((await readFile(join(root, 'version.log'), 'utf8')).trim(), '0.2.1-rc.5')
   await command('pack', process.execPath, [join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'), 'pack', '--ignore-scripts', '--pack-destination', root], process.env)
   const tarball = join(root, `dsh-next-message-${JSON.parse(await readFile(join(project, 'package.json'), 'utf8')).version}.tgz`)
-  await dsh('install', ['plugin', '--profile', 'next-message-test', 'add', tarball, '--ignore-scripts', '--config.auto-install-peers=false'])
+  await dsh('install', ['plugin', '--profile', 'next-message-test', 'add', tarball])
   const patches = [
     { id: 'webserver', config: { host: '127.0.0.1', port: 0, compression: 'gzip', compressionLevel: 1, compressionThresholdBytes: 1024 } },
     { id: 'web-runtime', config: { openBrowser: false, printUrl: false, surfaceContext: false } },
@@ -183,12 +183,13 @@ try {
   await editor.fill('Finish the third example turn')
   await editor.press('Enter')
   await waitFor(async () => (await ghost.textContent().catch(() => ''))?.startsWith('Continue implementation'), 'one automatic suggestion')
+  assert.equal((await readCounts()).modelCatalogHasSetup, true)
   await controlHold('hold')
   await editor.fill('/suggest')
   await editor.press('Enter')
   await waitFor(async () => (await ghost.textContent().catch(() => '')) === 'Generating suggestions…', 'generating status before unload')
   const unload = await page.evaluate(async () => (await fetch('api/next-message-unload-fixture', { method: 'POST' })).json())
-  assert.deepEqual(unload, { routeRemoved: true, commandRemoved: true, drained: true })
+  assert.deepEqual(unload, { routeRemoved: true, commandRemoved: true, skillRemoved: true, drained: true })
   await waitFor(async () => await ghost.count() === 0, 'plugin unload')
   assert.equal(await page.locator('style[data-plugin="dsh-next-message"]').count(), 0)
   assert.equal(errors.length, 0, errors.join('\n'))

@@ -2,11 +2,11 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, readdir } from 'node:fs/promises'
 
-export const inject = ['llm', 'agents', 'commands', 'connection', 'webServer', 'loader', 'sessions']
+export const inject = ['llm', 'agents', 'commands', 'connection', 'webServer', 'loader', 'sessions', 'skills']
 
 export function apply(ctx, config) {
   const published = createRequire(pathToFileURL(join(config.archive, 'dsh', 'package.json')))
@@ -51,7 +51,7 @@ export function apply(ctx, config) {
       }
     }
     ctx.llm.registerAdapter(['suggestions-fixture', 'suggestions-aux-fixture'], new Adapter())
-    ctx.connection.fetch.register({ path: '/api/next-message-fixture', methods: ['GET'], requestBody: 'buffered', fetch: async () => Response.json({ events, auxiliaryCalls: requests.filter(request => request.purpose === 'next-message-suggestions').length, primaryCalls: requests.filter(request => request.purpose !== 'next-message-suggestions').length }) })
+    ctx.connection.fetch.register({ path: '/api/next-message-fixture', methods: ['GET'], requestBody: 'buffered', fetch: async () => Response.json({ events, auxiliaryCalls: requests.filter(request => request.purpose === 'next-message-suggestions').length, primaryCalls: requests.filter(request => request.purpose !== 'next-message-suggestions').length, modelCatalogHasSetup: requests.filter(request => request.purpose !== 'next-message-suggestions').some(request => request.messages.some(message => message.source.kind === 'skill-catalog' && message.content.some(block => block.type === 'text' && block.text.includes('dsh-next-message-setup')))) }) })
     ctx.connection.fetch.register({ path: '/api/next-message-hold-fixture', methods: ['POST'], requestBody: 'buffered', fetch: async request => {
       const action = (await request.json()).action
       assert.ok(['hold', 'release'].includes(action))
@@ -62,6 +62,16 @@ export function apply(ctx, config) {
     // This verifier outlives the tested provider so it can observe actual unload cleanup.
     const service = ctx.get('nextMessageSuggestions')
     assert.ok(service)
+    const setup = await ctx.skills.get('dsh-next-message-setup', { cwd: config.root })
+    assert.ok(setup)
+    assert.equal(setup.invocation.modelInvocable, true)
+    assert.equal(setup.invocation.userInvocable, true)
+    assert.equal(setup.source, 'bundled')
+    assert.equal(setup.resourceBase.kind, 'directory')
+    assert.equal(setup.resourceBase.path, dirname(setup.path))
+    assert.ok(setup.content.includes('## 修改现有设置'))
+    assert.ok((await readFile(setup.path, 'utf8')).endsWith(setup.content))
+    assert.ok((await ctx.skills.list({ cwd: config.root })).some(skill => skill.name === setup.name))
     const bridge = ctx.connection.createSharedFetchHandler('/api')
     const guest = ctx.connection.createPeer({ principal: { kind: 'suggestions-test-guest' }, interactions: 'none' })
     const denied = await bridge.fetch(new Request('http://localhost/api/next-message-suggestions?sessionId=test'), guest)
@@ -73,16 +83,19 @@ export function apply(ctx, config) {
       held?.resolve()
       held = undefined
       await ctx.loader.resolve(id).fiber.dispose()
+      assert.equal(await ctx.skills.get('dsh-next-message-setup', { cwd: config.root }), undefined)
+      assert.ok(!(await ctx.skills.list({ cwd: config.root })).some(skill => skill.name === 'dsh-next-message-setup'))
       assert.ok(agents.every(agent => ctx.commands.find(agent, 'suggest') === undefined))
       const absent = await bridge.fetch(new Request('http://localhost/api/next-message-suggestions?sessionId=test'), ctx.connection.browserPeer)
       assert.equal(absent.status, 404)
-      return Response.json({ routeRemoved: true, commandRemoved: true, drained: service.pending.size === 0 && service.writes.size === 0 })
+      return Response.json({ routeRemoved: true, commandRemoved: true, skillRemoved: true, drained: service.pending.size === 0 && service.writes.size === 0 })
     } })
     const settle = async () => { while (service.pending.size) await Promise.allSettled([...service.pending]) }
     let handle = await ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: config.root }, agentOptions: { provider: 'suggestions-fixture', model: 'main' } })
     let agent = handle.agent
     const prompt = text => agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
     const checks = []
+    checks.push('installed package registers its local setup skill in the released model/user catalog, loads exact local instructions and resource base, and removes the contribution on unload')
     checks.push('non-owner Peer rejected with 403 by the authenticated exact-route carrier')
     try {
       prompt('Finish the implementation')
@@ -348,6 +361,7 @@ export function apply(ctx, config) {
       assert.ok(events.every(event => !event.type.startsWith('suggestions/') && !event.type.startsWith('plugin:')))
       checks.push('complete auxiliary audit is separate; no plugin Session events')
       const modules = [...ctx.loader.internal.loadCache.keys()].filter(url => url.includes('/@deepseek-ai/'))
+      await writeFile(join(config.root, 'module-origins.json'), JSON.stringify({ modules }, null, 2))
       assert.ok(modules.every(url => url.includes('/resources/app.asar/dsh/node_modules/')))
       checks.push('all loaded host capabilities come from the official installation')
       await writeFile(join(config.root, 'host-evidence.json'), `${JSON.stringify({ checks, auditRecords: audit.length, modules }, null, 2)}\n`)

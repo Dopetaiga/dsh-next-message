@@ -24,7 +24,7 @@ description: Guide users through a conversational wizard to install or configure
 | 阶段 | 简短问法与选项 | 接续行为 |
 | --- | --- | --- |
 | 选择目标 | “给哪一处开建议？①检测到的桌面版（若为当前使用环境则推荐）②检测到的 Web/profile ③其他位置” | 只对未发现的位置追问启动路径或 profile，再重新检测 |
-| 插件包与兼容 | 发现兼容本地包则不问；没有时先查本项目 Releases 或源码，无法取得兼容包才问用户可提供的位置 | 多个兼容版本仅列实际发现的候选；宿主版本不支持则说明支持范围并停止，不修改宿主 |
+| 插件包与兼容 | 发现兼容本地包则不问；没有时先查本包 npm/宿主镜像，网络均不可用才尝试 Release 或询问已有包的位置 | 多个兼容版本仅列实际发现的候选；宿主版本不支持则说明支持范围并停止，不修改宿主 |
 | 建议模型 | “建议由哪个模型生成？①沿用当前会话（推荐）②单独选一个已有模型” | 选独立后列实际检测的模型名称供选择，自动映射 provider+model，不注册新模型或复制凭据 |
 | 自动时机 | “何时自动给建议？①跳过前两轮，第三轮起（推荐）②每个完整回合后③仅手动” | 分别设置自动且跳2、自动且跳0、关闭自动；`/suggest` 不受轮次门槛限制 |
 | 上下文 | “参考多少内容？①精简默认：最近两组（推荐）②展开高级设置” | 默认头300/尾900码点、总48000字节；高级先问想调整组数、长文本还是总量，只追问该项 |
@@ -58,9 +58,9 @@ description: Guide users through a conversational wizard to install or configure
 1. 从可用的 `dsh` 命令、已安装应用启动器或用户提供的位置确认官方 CLI、运行方式及 `dsh --version`。不要假设机器路径、操作系统或版本。Desktop 自带 CLI 也可管理插件；先读其 `plugin --help`。
 2. 确认实际 `DSH_HOME` 和目标 profile。默认 home 通常是用户目录下 `.dsh`，但须核对启动器环境或配置；当前 shell 的 `DSH_HOME` 不一定等于 Desktop 的值。Desktop 通常用 `desktop`，Web 用其启动参数选中的 profile。共享 home 的会话和凭据不表示共享插件激活：不同 profile 的包、bundle 选择及 patch 分别管理。
 3. 读取目标 profile 的安装清单、bundle 激活状态与相关 patch，必要时用 `dsh plugin --profile <profile> list --depth 0` 核对。只提取版本、路径、插件状态和非敏感模型 ID，不打印完整配置或进程命令行。不读取、复述或复制 API key、token 和凭据文件；provider/model ID 从已有模型配置中定向提取。
-4. 以目标插件 `package.json` 中的 `name`、`version`、`engines.dsh`、`dsh.bundle.patch` 为准，读取 patch 和 `host.mjs` 的 `Config` 核对字段。未安装时可检查用户提供的本地 tgz 内 `package/package.json`、patch 和 Host 文件，或所提供源码目录的对应文件。没有本地插件文件时，先读取本项目实际发布源 `https://github.com/Dopetaiga/dsh-next-message` 的 manifest 和 Releases，选择与宿主兼容的 release tgz 下载；不让首次用户先找本地包。没有兼容 release 时可读取该仓库源码，按 manifest 用 `npm pack --ignore-scripts` 打包，再由官方 CLI 安装；缺少打包依赖或网络不可用时才询问用户能提供的插件文件位置。不猜其他远程仓库、npm 包地址或安装网址，不执行来源不明的 `npx`。宿主版本不匹配时说明限制，不扩大兼容范围或改宿主。
+4. 已安装时优先读取目标本地 `node_modules/dsh-next-message`：由 manifest 的 `name`、`version`、`engines.dsh`、`dsh.bundle.patch` 定位 patch 和 `host.mjs` 的 `Config`，不为改配置访问 GitHub或重装。首次安装时查询已发布包名 `dsh-next-message` 的 npm 元数据，选择兼容的精确版本；官方源 `https://registry.npmjs.org`，国内可用宿主支持的 `https://registry.npmmirror.com`。读取返回的 manifest、README 和实际 tarball 地址，不手拼下载地址；镜像缺新版本时按宿主回退或询问是否改用官方源，不改全局 registry。两源均不可用时才尝试本项目 `https://github.com/Dopetaiga/dsh-next-message` Releases 或用户已有 tgz。宿主版本不兼容就说明支持范围并停止，不升级宿主或放宽限制。不猜其他仓库或执行来源不明的 `npx`。
 
-本文件可单独复制使用，无必需的相对文件或其他 skill 依赖。插件源码或 tgz 是安装的实际输入，不能用本文件代替；仅有此文件时仍需发现已安装插件或取得用户提供的插件文件。
+本文件可单独复制使用，无必需的相对文件或其他 skill 依赖。安装输入优先为核实过的 npm 包与精确版本，tgz 是备选；本文件不是运行插件。安装后本插件通过官方 skill registry 提供当前这份本地向导，无需回到 GitHub 获取说明。
 
 ## 高级字段映射（按需使用）
 
@@ -92,17 +92,17 @@ description: Guide users through a conversational wizard to install or configure
 
 ## 需要安装或卸载时
 
-只在用户要求安装、更新、卸载，或配置所需插件尚未安装且用户已要求完成设置时操作。先确认目标 profile 已初始化。桌面 profile 被运行锁占用时，查看是否有活跃任务；空闲且允许重启则从应用菜单正常退出，无法确认或有任务就等待用户安排。不得强杀、删锁文件、覆盖安装目录或替换 `app.asar`。已有会话与用户草稿保持原样。
+只在用户要求安装、更新、卸载，或配置所需插件尚未安装且用户已要求完成设置时操作。先确认目标 profile 已初始化。向导若正在目标 DSH 对话里执行，优先用宿主正式安装器或已启用的 plugin_manager，不能指示自己退出正在执行的宿主。仅外部 CLI 备选受运行锁限制：先交接用户安排正常退出，确认无任务且获重启授权才操作；无法确认或有任务就等待。不得强杀、删锁文件、覆盖安装目录或替换 `app.asar`。已有会话与用户草稿保持原样。
 
-采用发现的官方 CLI 和本地绝对 tgz 路径；当前已验证的官方管理语法为：
+优先通过当前宿主正式插件安装器或其 `plugin_manager` 工具安装精确 npm 版本，遵守现有权限与确认流程；工具未启用时使用已发现的官方 CLI。不要为了安装擅自改会话权限。将下例版本占位值替换为元数据核实的兼容精确版本：
 
 ```text
-dsh plugin --profile <profile> add <absolute-tgz-path> --ignore-scripts --config.auto-install-peers=false
+dsh plugin --profile <profile> add dsh-next-message@<compatible-version> --registry=https://registry.npmmirror.com
 dsh plugin --profile <profile> list --depth 0
 dsh plugin --profile <profile> remove dsh-next-message
 ```
 
-`add` 安装并选择该 profile 的 bundle；检查已有禁用覆盖，不覆盖用户明确关闭的设置。保留其他包和激活项。检查命令结果及实际安装版本；需要重启时重新打开原官方应用。失败时停止相关后续操作，保留简短诊断，不循环重装或切换来源。
+`--registry` 仅本次选源；不需要国内镜像时省略或选择宿主默认源。安装器在当前宿主内管理插件；外部 CLI 则需确认运行锁已释放。`add` 安装并选择该 profile 的 bundle；检查已有禁用覆盖，不覆盖用户明确关闭的设置。保留其他包和激活项。检查命令结果及实际安装版本；需要重启时重新打开原官方应用。失败时停止相关后续操作，保留简短诊断，不循环重装或切换来源。
 
 ## 核验与交付
 

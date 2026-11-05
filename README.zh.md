@@ -8,20 +8,20 @@
 
 ## 安装与卸载
 
-使用[对话式配置向导](skills/dsh-next-message-setup/SKILL.md)：把 SKILL.md 交给 agent，说“帮我首次安装并配置建议插件”“只换建议模型”或“换到新的 Web/profile 环境”。向导先检测现有设置，再让你选择或回答缺失项，随后自动落配置。也可将整个 `skills/dsh-next-message-setup` 目录复制到所用 agent 支持的 skills 目录，按该 agent 的机制加载。skill 可独立分发，同时随源码目录和发布 tgz 提供；它负责设置，建议功能仍需本地插件包，已有插件不必为使用向导重装。
+在官方 DSH 打开**插件 → 添加插件**，填写 `dsh-next-message@0.1.4`，检查包信息后安装。国内网络可选择宿主提供的 **npmmirror 国内镜像**，失败回退遵循宿主设置。npm 包已包含运行文件和配置 skill，安装不下载 GitHub，也不运行包安装或构建脚本。不同 Web/Desktop profile 需分别安装；通过宿主 LLM 服务复用现有凭证，不读取或复制凭据文件。兼容版本仍以声明为准。
 
-从 [Releases](https://github.com/Dopetaiga/dsh-next-message/releases) 下载兼容的 tgz，再完全退出 Desktop，且其 profile 已初始化。使用安装版自带 CLI；如果 `dsh` 未加入 PATH，找到实际安装目录自带的 CLI 启动器，将其真实路径赋给 `$dsh`，不使用下面的 `Get-Command`：
+安装后在 DSH 对话说：“使用 dsh-next-message-setup 帮我配置建议”“只换建议模型”或“换到新的 Web/profile 环境”。插件通过官方 skill 服务注册随包的[对话式向导](skills/dsh-next-message-setup/SKILL.md)，agent 可直接发现并本地加载；向导先检测现状，只问缺失选择。卸载或禁用插件会撤销该贡献，不向全局 skill 目录复制文件。已安装插件改配置无需重装。
 
-```powershell
-$dsh = (Get-Command dsh -ErrorAction Stop).Source
-$package = (Resolve-Path './dsh-next-message-0.1.3.tgz').Path
-& $dsh plugin --profile desktop add $package --ignore-scripts --config.auto-install-peers=false
-& $dsh plugin --profile desktop list --depth 0
-# 卸载前再次完全退出 Desktop：
-& $dsh plugin --profile desktop remove dsh-next-message
+命令行安装使用实际 profile 及官方安装自带 CLI；`dsh` 未加入 PATH 时先定位其启动器，不假定机器路径。外部 CLI 操作 Desktop 前须完全退出应用；应用内安装器通过运行中的宿主操作，不能即时应用时可能提示重启。
+
+```sh
+dsh plugin --profile desktop add dsh-next-message@0.1.4 --registry=https://registry.npmmirror.com
+dsh plugin --profile desktop list --depth 0
+# 使用外部 CLI 卸载前先完全退出 Desktop：
+dsh plugin --profile desktop remove dsh-next-message
 ```
 
-官方安装器会在指定 profile 激活 bundle；其他 Web profile 需要分别安装。插件通过宿主 LLM 服务复用已有模型凭证，不读取或复制凭据文件。
+省略 `--registry` 则遵循宿主/pnpm 默认；官方 npm 源为 `https://registry.npmjs.org`，镜像同步新版本可能有延迟。[GitHub Releases](https://github.com/Dopetaiga/dsh-next-message/releases) 和本地 tgz 作为备选。在 DSH 之外使用向导时，将 SKILL.md 交给 agent，或将完整技能目录复制到该 agent 支持的位置，再按其机制加载。
 
 ## 配置与审计
 
