@@ -2,6 +2,10 @@
 
 English | [中文](README.zh.md)
 
+## Installation entry for AI agents
+
+Read the [setup skill](skills/dsh-next-message-setup/SKILL.md) to guide detection, compatible npm installation and configuration in one conversation. You can tell your agent: “Help me install and configure https://github.com/Dopetaiga/dsh-next-message”. A repository link provides instructions for the agent to read; it does not itself authorize or automatically run installation. If GitHub is unreachable, give the agent the npm package name `dsh-next-message` and use the official DSH plugin installer; the installed package provides the local setup skill.
+
 An independent third-party bundle for official **DSH 0.2.1-rc.5**. It modifies no application files and requires no custom Host build.
 
 Starting with the third completed root assistant turn, one suggestion appears in grey while the composer is empty. `/suggest` refreshes three directions, including during the first two turns or while the main task is running. The empty composer shows “Generating suggestions…” while a manual request is pending. Typing hides this status without changing the draft. Left/right arrows change direction; Tab inserts the selected text into the draft and **never sends it**. Typing hides the suggestion. Menus, IME, modifiers, attachments and normal editing take priority. New human input cancels obsolete generation. Automatic failures remain silent; manual failures show a short inline message. A model may return no suggestions.
