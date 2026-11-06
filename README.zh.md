@@ -12,14 +12,14 @@
 
 ## 安装与卸载
 
-在官方 DSH 打开**插件 → 添加插件**，填写 `dsh-next-message@0.1.4`，检查包信息后安装。国内网络可选择宿主提供的 **npmmirror 国内镜像**，失败回退遵循宿主设置。npm 包已包含运行文件和配置 skill，安装不下载 GitHub，也不运行包安装或构建脚本。不同 Web/Desktop profile 需分别安装；通过宿主 LLM 服务复用现有凭证，不读取或复制凭据文件。兼容版本仍以声明为准。
+在官方 DSH 打开**插件 → 添加插件**，填写 `dsh-next-message@0.1.5`，检查包信息后安装。国内网络可选择宿主提供的 **npmmirror 国内镜像**，失败回退遵循宿主设置。npm 包已包含运行文件和配置 skill，安装不下载 GitHub，也不运行包安装或构建脚本。不同 Web/Desktop profile 需分别安装；通过宿主 LLM 服务复用现有凭证，不读取或复制凭据文件。兼容版本仍以声明为准。
 
 安装后在 DSH 对话说：“使用 dsh-next-message-setup 帮我配置建议”“只换建议模型”或“换到新的 Web/profile 环境”。插件通过官方 skill 服务注册随包的[对话式向导](skills/dsh-next-message-setup/SKILL.md)，agent 可直接发现并本地加载；向导先检测现状，只问缺失选择。卸载或禁用插件会撤销该贡献，不向全局 skill 目录复制文件。已安装插件改配置无需重装。
 
 命令行安装使用实际 profile 及官方安装自带 CLI；`dsh` 未加入 PATH 时先定位其启动器，不假定机器路径。外部 CLI 操作 Desktop 前须完全退出应用；应用内安装器通过运行中的宿主操作，不能即时应用时可能提示重启。
 
 ```sh
-dsh plugin --profile desktop add dsh-next-message@0.1.4 --registry=https://registry.npmmirror.com
+dsh plugin --profile desktop add dsh-next-message@0.1.5 --registry=https://registry.npmmirror.com
 dsh plugin --profile desktop list --depth 0
 # 使用外部 CLI 卸载前先完全退出 Desktop：
 dsh plugin --profile desktop remove dsh-next-message

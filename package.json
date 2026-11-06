@@ -1,6 +1,6 @@
 {
   "name": "dsh-next-message",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Background next-message suggestions for official DeepSeek Harness",
   "type": "module",
   "exports": {

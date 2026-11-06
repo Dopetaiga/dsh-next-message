@@ -12,14 +12,14 @@ Starting with the third completed root assistant turn, one suggestion appears in
 
 ## Install or remove
 
-In official DSH, open **Plugins → Add plugin**, enter `dsh-next-message@0.1.4`, review the package and install it. For mainland China networks, choose the Host’s **npmmirror** source; registry fallback follows Host settings. The npm package contains the prebuilt runtime and setup skill: installation does not fetch GitHub or run package install/build scripts. Another Web/Desktop profile needs its own installation. Existing model credentials are reused through the Host LLM service, without reading or copying credential files. DSH compatibility remains restricted to the declared version.
+In official DSH, open **Plugins → Add plugin**, enter `dsh-next-message@0.1.5`, review the package and install it. For mainland China networks, choose the Host’s **npmmirror** source; registry fallback follows Host settings. The npm package contains the prebuilt runtime and setup skill: installation does not fetch GitHub or run package install/build scripts. Another Web/Desktop profile needs its own installation. Existing model credentials are reused through the Host LLM service, without reading or copying credential files. DSH compatibility remains restricted to the declared version.
 
 After installation, tell your DSH agent: “Use dsh-next-message-setup to configure suggestions”, “Change only my suggestion model”, or “Set this up in a new Web/profile environment”. The plugin registers its bundled [conversational wizard](skills/dsh-next-message-setup/SKILL.md) with the official skill service; the agent can discover and load it locally. It detects current settings and asks only missing choices. Unloading the plugin removes this contribution without copying files into global skill folders. Configuring an installed plugin does not require reinstalling it.
 
 For CLI installation, use the actual profile and the official CLI shipped with your installation. If `dsh` is not on PATH, locate the installed CLI wrapper instead of assuming a path. An external CLI operation on Desktop requires fully quitting the app; the built-in installer operates through the running Host and may request a restart when live application is unavailable.
 
 ```sh
-dsh plugin --profile desktop add dsh-next-message@0.1.4 --registry=https://registry.npmmirror.com
+dsh plugin --profile desktop add dsh-next-message@0.1.5 --registry=https://registry.npmmirror.com
 dsh plugin --profile desktop list --depth 0
 # To remove, fully quit Desktop first when using this external CLI:
 dsh plugin --profile desktop remove dsh-next-message

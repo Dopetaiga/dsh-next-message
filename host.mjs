@@ -278,7 +278,7 @@ export default class NextMessage extends Service {
       signal.throwIfAborted()
       const request = freeze({ ...call.config, system, messages, tools: [], sessionId: session.id, purpose: 'next-message-suggestions' })
       const options = freeze({ ...request, signal })
-      await this.audit(session, { kind: 'request', requestId, sourceSeq, count, pluginVersion: '0.1.4', request })
+      await this.audit(session, { kind: 'request', requestId, sourceSeq, count, pluginVersion: '0.1.5', request })
       signal.throwIfAborted()
       assembler = new BlockAssembler()
       for await (const chunk of call.stream(options)) { signal.throwIfAborted(); assembler.push(chunk) }
