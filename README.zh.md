@@ -6,20 +6,20 @@
 
 请 agent 先读取[配置向导](skills/dsh-next-message-setup/SKILL.md)，在同一轮对话中完成检测、兼容 npm 版本安装和配置。你可以说：“帮我安装并配置 https://github.com/Dopetaiga/dsh-next-message”。仓库链接是供 agent 读取的指引，不会自行授权或自动执行安装。GitHub 打不开时，直接提供 npm 包名 `dsh-next-message`，通过官方 DSH 插件安装器安装；安装包自带本地配置向导。
 
-适配官方 **DSH 0.2.1-rc.5** 的独立第三方 bundle，不修改应用文件，也不需要定制宿主。
+面向官方 DSH 的独立第三方 bundle。它不修改应用文件，也不需要定制宿主。
 
 默认从第三个完整根助手回合结束起，空输入框显示一条灰字建议。`/suggest` 主动刷新三个方向，前两轮或主任务执行中也可使用；手动生成期间，空输入框显示“正在生成建议…”，打字会隐藏提示且不改变草稿。左右键切换，Tab 将选中内容填入草稿，**绝不自动发送**。开始输入即隐藏；菜单、IME、修饰键、附件和正常编辑优先。新用户输入会取消过期生成。自动失败不打扰，手动失败显示简短行内提示；无有用方向时可以不提供建议。
 
 ## 安装与卸载
 
-在官方 DSH 打开**插件 → 添加插件**，填写 `dsh-next-message@0.1.5`，检查包信息后安装。国内网络可选择宿主提供的 **npmmirror 国内镜像**，失败回退遵循宿主设置。npm 包已包含运行文件和配置 skill，安装不下载 GitHub，也不运行包安装或构建脚本。不同 Web/Desktop profile 需分别安装；通过宿主 LLM 服务复用现有凭证，不读取或复制凭据文件。兼容版本仍以声明为准。
+在官方 DSH 打开**插件 → 添加插件**，填写 `dsh-next-message@0.1.6`，检查包信息后安装。国内网络可选择宿主提供的 **npmmirror 国内镜像**，失败回退遵循宿主设置。npm 包已包含运行文件和配置 skill，安装不下载 GitHub，也不运行包安装或构建脚本。不同 Web/Desktop profile 需分别安装；通过宿主 LLM 服务复用现有凭证，不读取或复制凭据文件。
 
 安装后在 DSH 对话说：“使用 dsh-next-message-setup 帮我配置建议”“只换建议模型”或“换到新的 Web/profile 环境”。插件通过官方 skill 服务注册随包的[对话式向导](skills/dsh-next-message-setup/SKILL.md)，agent 可直接发现并本地加载；向导先检测现状，只问缺失选择。卸载或禁用插件会撤销该贡献，不向全局 skill 目录复制文件。已安装插件改配置无需重装。
 
 命令行安装使用实际 profile 及官方安装自带 CLI；`dsh` 未加入 PATH 时先定位其启动器，不假定机器路径。外部 CLI 操作 Desktop 前须完全退出应用；应用内安装器通过运行中的宿主操作，不能即时应用时可能提示重启。
 
 ```sh
-dsh plugin --profile desktop add dsh-next-message@0.1.5 --registry=https://registry.npmmirror.com
+dsh plugin --profile desktop add dsh-next-message@0.1.6 --registry=https://registry.npmmirror.com
 dsh plugin --profile desktop list --depth 0
 # 使用外部 CLI 卸载前先完全退出 Desktop：
 dsh plugin --profile desktop remove dsh-next-message
@@ -57,6 +57,8 @@ dsh plugin --profile desktop remove dsh-next-message
 
 ## 兼容性与验证
 
-`engines.dsh` 固定为已验证版本，不承诺兼容后续官方更新。发布版启动器会警告并跳过不兼容的 bundle 层，显式插件条目则被禁用；更新后如需适配，可先用上述官方命令卸载，不应仅为强制加载而添加版本豁免。
+清单声明的 DSH 版本范围为 `>=0.2.0-rc.1 <0.3.0-0`。未单独配置建议模型时，会话中新选的模型立即用于建议生成，重新打开会话后仍然有效。其他会话改动全局默认模型时，本会话已记录的选择保持有效。
 
-`tests/verify.mjs` 使用真实安装版、隔离临时 `DSH_HOME`、确定性模型适配器和系统 Edge。维护者需要 Node >=24.9、兼容的官方 Windows Desktop 安装版、系统 Edge，以及已安装 Web 测试依赖的 DSH 源码 checkout。运行 `node tests/verify.mjs <desktop安装目录> <dsh源码checkout>`，两个路径均必填。Playwright 仅从该 checkout 作为测试工具解析，源码宿主模块不会进入应用；临时凭据和日志仅写入本仓库忽略的 `.artifacts/` 目录。覆盖自动/手动生成、执行中取消、独立审计、仅 owner 可读状态、键盘/菜单/IME、真实明暗主题对比度和卸载清理。它证明无密钥集成行为，不代表真实模型建议质量验收。
+无密钥 Edge 集成验证已在 DSH `0.2.0-rc.1`（官方 npm Web 运行时）和 `0.2.2-rc.1`（Windows Desktop 运行时）通过。
+
+`tests/verify.mjs` 使用官方运行时、隔离的临时 `DSH_HOME`、确定性模型适配器和系统 Edge。用 Node >=24.9 运行 `node tests/verify.mjs <运行时目录> <DSH源码checkout> <预期版本>`。运行时目录可以是 Windows Desktop 安装目录，也可以是已安装的 `@deepseek-ai/dsh` npm 包目录。测试从源码 checkout 加载 Playwright。临时 profile 和日志写入 `.artifacts/`。测试覆盖会话模型选择、自动和手动生成、执行中取消、审计、仅 owner 可读状态、键盘、菜单和 IME 行为、明暗主题对比度，以及卸载清理。

@@ -6,15 +6,17 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 // Playwright is a test tool only; none of its workspace modules enter the Host process.
 import { createRequire } from 'node:module'
-if (!process.argv[2] || !process.argv[3]) throw new Error('Usage: node tests/verify.mjs <desktop-install-directory> <dsh-source-checkout>')
+if (!process.argv[2] || !process.argv[3]) throw new Error('Usage: node tests/verify.mjs <desktop-install-directory|installed-dsh-package-directory> <dsh-source-checkout> [expected-version]')
 const sourceRequire = createRequire(join(resolve(process.argv[3]), 'apps/web/package.json'))
 const { chromium } = sourceRequire('playwright')
 
 const project = fileURLToPath(new URL('../', import.meta.url))
 const install = resolve(process.argv[2])
-const executable = join(install, 'DeepSeek Harness.exe')
-const archive = join(install, 'resources', 'app.asar')
-const cli = join(archive, 'dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js')
+const desktop = await stat(join(install, 'DeepSeek Harness.exe')).then(() => true, () => false)
+const executable = desktop ? join(install, 'DeepSeek Harness.exe') : process.execPath
+const runtime = desktop ? join(install, 'resources', 'app.asar', 'dsh') : install
+const cli = desktop ? join(runtime, 'node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js') : join(runtime, 'lib/bin.js')
+const cliArgs = desktop ? ['--expose-internals', cli] : [cli]
 const artifacts = resolve(project, '.artifacts')
 await mkdir(artifacts, { recursive: true })
 const root = await mkdtemp(join(artifacts, 'next-message-acceptance-'))
@@ -45,7 +47,7 @@ async function command(label, program, args, env = environment) {
   assert.equal(timedOut, false, `${label} exceeded its deadline`)
   assert.equal(code, 0, `${label} failed; see ${join(root, `${label}.log`)}`)
 }
-const dsh = (label, args) => command(label, executable, ['--expose-internals', cli, ...args])
+const dsh = (label, args) => command(label, executable, [...cliArgs, ...args])
 const waitFor = async (test, label, timeout = 45000) => {
   const end = Date.now() + timeout
   while (Date.now() < end) { if (errors.length) throw new Error(`Browser error: ${errors[0].slice(0, 500)}`); if (await test()) return; await new Promise(accept => setTimeout(accept, 50)) }
@@ -54,7 +56,7 @@ const waitFor = async (test, label, timeout = 45000) => {
 
 try {
   await dsh('version', ['--version'])
-  assert.equal((await readFile(join(root, 'version.log'), 'utf8')).trim(), '0.2.1-rc.5')
+  assert.equal((await readFile(join(root, 'version.log'), 'utf8')).trim(), process.argv[4] ?? '0.2.1-rc.5')
   await command('pack', process.execPath, [join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'), 'pack', '--ignore-scripts', '--pack-destination', root], process.env)
   const tarball = join(root, `dsh-next-message-${JSON.parse(await readFile(join(project, 'package.json'), 'utf8')).version}.tgz`)
   await dsh('install', ['plugin', '--profile', 'next-message-test', 'add', tarball])
@@ -67,19 +69,21 @@ try {
     { insert: [
       { id: 'directory-picker-browse', name: '@deepseek-ai/dsh-host-directory-picker-browse' },
       { id: 'ui-directory-picker-browse', name: '@deepseek-ai/dsh-client-ui-directory-picker-browse' },
-      { id: 'next-message-test-fixture', name: pathToFileURL(join(root, 'fixture.mjs')).href, config: { archive, root } },
+      { id: 'next-message-test-fixture', name: pathToFileURL(join(root, 'fixture.mjs')).href, config: { runtime, desktop, root } },
     ] },
   ]
   await writeFile(join(root, 'fixture.mjs'), await readFile(join(project, 'tests/fixture.mjs')))
   await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'next-message-test-only', private: true, type: 'module' }))
   await writeFile(join(profile, 'cordis.patch.yml'), JSON.stringify(patches, null, 2))
-  server = spawn(executable, ['--expose-internals', cli, '--profile', 'next-message-test'], { cwd: project, env: environment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  server = spawn(executable, [...cliArgs, '--profile', 'next-message-test'], { cwd: project, env: environment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const serverChunks = []
   server.stdout.on('data', data => serverChunks.push(data))
   server.stderr.on('data', data => serverChunks.push(data))
   server.on('close', () => { void writeFile(join(root, 'server.log'), Buffer.concat(serverChunks)) })
   await waitFor(async () => { if (server.exitCode !== null) throw new Error(`Official Web exited ${server.exitCode}: ${Buffer.concat(serverChunks).toString().slice(-3000)}`); return stat(join(root, 'ready.json')).then(() => true, () => false) }, 'official Web and host checks')
   const ready = JSON.parse(await readFile(join(root, 'ready.json'), 'utf8'))
+  const unauthorized = await fetch(new URL('/api/next-message-suggestions?sessionId=test', ready.url))
+  assert.equal(unauthorized.status, 401)
   browser = await chromium.launch({ channel: 'msedge', headless: true })
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, locale: 'en-US' })
   page.setDefaultTimeout(5000)
@@ -117,6 +121,10 @@ try {
   await editor.press('ArrowRight')
   await editor.press('ArrowRight')
   await waitFor(async () => (await ghost.textContent())?.startsWith('Inspect the evidence'), 'two consecutive right arrows')
+  await editor.press('ArrowLeft')
+  await waitFor(async () => (await ghost.textContent())?.startsWith('Explain the result'), 'left arrow returns to previous suggestion')
+  await editor.press('ArrowRight')
+  await waitFor(async () => (await ghost.textContent())?.startsWith('Inspect the evidence'), 'right arrow returns to next suggestion')
   const readCounts = () => page.evaluate(async () => (await fetch('api/next-message-fixture')).json())
   const beforeTab = await readCounts()
   const contrast = []
@@ -193,7 +201,7 @@ try {
   await waitFor(async () => await ghost.count() === 0, 'plugin unload')
   assert.equal(await page.locator('style[data-plugin="dsh-next-message"]').count(), 0)
   assert.equal(errors.length, 0, errors.join('\n'))
-  await writeFile(join(root, 'browser-evidence.json'), JSON.stringify({ manualGeneratingVisible: true, generatingHiddenDuringTyping: true, generatingClearedOnSuccess: true, generatingClearedOnUnload: true, manualThree: true, consecutiveRight: true, tabDraftOnly: true, tabAddedNoMessagesOrPrimaryCalls: true, shiftTabPassed: true, modifierArrowPassed: true, imePassed: true, menuPriority: true, draftProtected: true, automaticAfterThirdTurn: true, unload, errors }, null, 2))
+  await writeFile(join(root, 'browser-evidence.json'), JSON.stringify({ manualGeneratingVisible: true, generatingHiddenDuringTyping: true, generatingClearedOnSuccess: true, generatingClearedOnUnload: true, manualThree: true, consecutiveRight: true, leftArrowPassed: true, tabDraftOnly: true, tabAddedNoMessagesOrPrimaryCalls: true, shiftTabPassed: true, modifierArrowPassed: true, imePassed: true, menuPriority: true, draftProtected: true, automaticAfterThirdTurn: true, unload, errors }, null, 2))
   await browser.close()
   browser = undefined
   await writeFile(join(root, 'result.json'), JSON.stringify({ passed: true, root, install, commands }, null, 2))

@@ -6,10 +6,10 @@ import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, readdir } from 'node:fs/promises'
 
-export const inject = ['llm', 'agents', 'commands', 'connection', 'webServer', 'loader', 'sessions', 'skills']
+export const inject = ['llm', 'agents', 'agentDefaultModel', 'commands', 'connection', 'webServer', 'loader', 'sessions', 'skills']
 
 export function apply(ctx, config) {
-  const published = createRequire(pathToFileURL(join(config.archive, 'dsh', 'package.json')))
+  const published = createRequire(pathToFileURL(join(config.runtime, 'package.json')))
   const load = async name => import(pathToFileURL(published.resolve(name)))
   const run = async () => {
     const { LlmAdapter, createUserMessage, createAssistantMessage, createToolResultMessage } = await load('@deepseek-ai/dsh-llm')
@@ -74,10 +74,15 @@ export function apply(ctx, config) {
     assert.ok((await readFile(setup.path, 'utf8')).endsWith(setup.content))
     assert.ok((await ctx.skills.list({ cwd: config.root })).some(skill => skill.name === setup.name))
     const bridge = ctx.connection.createSharedFetchHandler('/api')
-    const guest = ctx.connection.createPeer({ principal: { kind: 'suggestions-test-guest' }, interactions: 'none' })
-    const denied = await bridge.fetch(new Request('http://localhost/api/next-message-suggestions?sessionId=test'), guest)
-    assert.equal(denied.status, 403)
-    await guest.dispose()
+    const checks = []
+    if (ctx.connection.createPeer) {
+      const guest = ctx.connection.createPeer({ principal: { kind: 'suggestions-test-guest' }, interactions: 'none' })
+      try {
+        const denied = await bridge.fetch(new Request('http://localhost/api/next-message-suggestions?sessionId=test'), guest)
+        assert.equal(denied.status, 403)
+      } finally { await guest.dispose() }
+      checks.push('non-owner Peer rejected with 403 by the authenticated exact-route carrier')
+    }
     ctx.connection.fetch.register({ path: '/api/next-message-unload-fixture', methods: ['POST'], requestBody: 'buffered', fetch: async () => {
       const agents = [...service.cells.keys()].map(session => ctx.agents.get(session.id)).filter(Boolean)
       const id = ctx.loader.locate(ctx.fiber).replace(/[^:]+$/, 'next-message')
@@ -95,9 +100,7 @@ export function apply(ctx, config) {
     let handle = await ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: config.root }, agentOptions: { provider: 'suggestions-fixture', model: 'main' } })
     let agent = handle.agent
     const prompt = text => agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] }))
-    const checks = []
     checks.push('installed package registers its local setup skill in the released model/user catalog, loads exact local instructions and resource base, and removes the contribution on unload')
-    checks.push('non-owner Peer rejected with 403 by the authenticated exact-route carrier')
     try {
       prompt('Finish the implementation')
       await agent.whenIdle()
@@ -361,9 +364,58 @@ export function apply(ctx, config) {
       assert.ok(audit.some(row => row.kind === 'response' && row.blocks.some(block => block.type === 'text')))
       assert.ok(events.every(event => !event.type.startsWith('suggestions/') && !event.type.startsWith('plugin:')))
       checks.push('complete auxiliary audit is separate; no plugin Session events')
+
+      const picked = { provider: 'suggestions-fixture', model: 'session-choice' }
+      const otherChoice = { provider: 'suggestions-fixture', model: 'other-session-choice' }
+      const select = (target, selection) => {
+        if (target.model) target.model.select(selection)
+        else target.session.append('model/selection', selection)
+      }
+      const assertAuxiliaryRoute = async expected => {
+        const primaryCalls = requests.filter(request => request.purpose !== 'next-message-suggestions').length
+        const sequence = agent.session.seq
+        const before = requests.length
+        service.start(agent.session, 3, true)
+        await settle()
+        assert.equal(requests.length, before + 1)
+        const request = requests.at(-1)
+        assert.equal(request.purpose, 'next-message-suggestions')
+        assert.equal(request.provider, expected.provider)
+        assert.equal(request.model, expected.model)
+        assert.equal(agent.session.seq, sequence)
+        assert.equal(requests.filter(request => request.purpose !== 'next-message-suggestions').length, primaryCalls)
+      }
+      assert.equal(agent.options.model, 'main')
+      select(agent, picked)
+      await assertAuxiliaryRoute(picked)
+      const defaultBefore = ctx.agentDefaultModel.currentSelection()
+      const other = await ctx.agents.create({ sessionId: randomUUID(), meta: { cwd: config.root }, agentOptions: defaultBefore })
+      try {
+        select(other.agent, otherChoice)
+        await ctx.agentDefaultModel.saveSelection(otherChoice)
+        assert.equal(ctx.agentDefaultModel.currentSelection().model, otherChoice.model)
+        await assertAuxiliaryRoute(picked)
+        const previous = agent.session
+        await handle.dispose()
+        handle = await ctx.agents.resume({ resumeSessionId: previous.id, agentOptions: otherChoice })
+        agent = handle.agent
+        assert.notEqual(agent.session, previous)
+        await assertAuxiliaryRoute(picked)
+        const independent = { provider: 'suggestions-aux-fixture', model: 'fast' }
+        try {
+          service.config = { ...originalConfig, ...independent }
+          await assertAuxiliaryRoute(independent)
+        } finally { service.config = originalConfig }
+      } finally {
+        await other.dispose()
+        await ctx.agentDefaultModel.saveSelection(defaultBefore)
+      }
+      checks.push('suggestions use the pending Session model before the next request, after another Session changes the default and after resume; explicit route wins')
+
       const modules = [...ctx.loader.internal.loadCache.keys()].filter(url => url.includes('/@deepseek-ai/'))
       await writeFile(join(config.root, 'module-origins.json'), JSON.stringify({ modules }, null, 2))
-      assert.ok(modules.every(url => url.includes('/resources/app.asar/dsh/node_modules/')))
+      const moduleRoot = pathToFileURL(config.desktop ? join(config.runtime, 'node_modules') : dirname(config.runtime)).href
+      assert.ok(modules.length && modules.every(url => url.startsWith(moduleRoot)))
       checks.push('all loaded host capabilities come from the official installation')
       await writeFile(join(config.root, 'host-evidence.json'), `${JSON.stringify({ checks, auditRecords: audit.length, modules }, null, 2)}\n`)
     } finally {
@@ -372,7 +424,8 @@ export function apply(ctx, config) {
       mainHold?.release()
       await handle.dispose()
     }
-    await writeFile(join(config.root, 'ready.json'), `${JSON.stringify({ url: ctx.connection.authenticatedUrl(ctx.webServer.getOrigin()), checks })}\n`)
+    const origin = `http://127.0.0.1:${ctx.webServer.port}`
+    await writeFile(join(config.root, 'ready.json'), `${JSON.stringify({ url: ctx.connection.authenticatedUrl(origin), checks })}\n`)
   }
   ctx.effect(() => ctx.get('appReady').onReady(() => { void run().catch(error => { console.error(error.stack); ctx.get('appExit')(1) }) }), 'next-message: published-runtime fixture')
 }

@@ -55,7 +55,7 @@ function fitBytes(text, maximum, head, tail) {
 
 /** One service owns generation, cancellation, owner-only RPC state, and audit writes. */
 export default class NextMessage extends Service {
-  static inject = ['sessions', 'agents', 'llm', 'commands', 'connection', 'webServer', 'sessionProjections', 'skills']
+  static inject = ['sessions', 'agents', 'agentDefaultModel', 'llm', 'commands', 'connection', 'webServer', 'sessionProjections', 'skills']
   static Config = z.object({
     automatic: z.boolean().default(true), provider: z.string(), model: z.string(),
     automaticSkipTurns: z.number().step(1).min(0).default(2),
@@ -135,7 +135,7 @@ export default class NextMessage extends Service {
       this.cells.clear()
     }, 'next-message: abort and drain')
     this.ctx.connection.fetch.register({ path: '/api/next-message-suggestions', methods: ['GET'], requestBody: 'buffered', fetch: async request => {
-      // Connection's exact-route dispatcher admits owner Peers only, before this callback.
+      // Connection authenticates the browser before dispatching this route.
       const parameters = new URL(request.url).searchParams
       const sessionId = parameters.get('sessionId')
       if (!sessionId || [...parameters.keys()].length !== 1) return Response.json({ error: 'Expected a Session identity' }, { status: 400 })
@@ -213,19 +213,28 @@ export default class NextMessage extends Service {
     return cell
   }
 
+  /** Read the selected model without changing the conversation's pending selection. */
+  routeFor(session) {
+    const { provider, model } = this.config
+    if (provider !== undefined) return { provider, model }
+    const agent = this.ctx.agents.get(session.id)
+    if (agent?.model) return agent.model.current()
+    // Older Hosts store the pending choice in the Session Controller projection.
+    const selection = this.ctx.sessionProjections.stateOf(session, 'modelSelection')
+    if (selection === undefined) throw new Error('Next-message requires the Host model selection projection')
+    return selection.pending ?? selection.lastUsed ?? this.ctx.agentDefaultModel.currentSelection()
+  }
+
   /** Snapshot the route and conversation synchronously; settle independently of the main task. */
   start(session, count, manual) {
     this.lifetime.signal.throwIfAborted()
     if (this.ctx.sessions.get(session.id) !== session) throw new Error('Next-message Session is not live')
+    const route = this.routeFor(session)
     const cell = this.clear(session)
     const controller = new AbortController()
     cell.controller = controller
     const text = this.contextText(session)
     const sourceSeq = session.seq
-    const options = this.ctx.agents.get(session.id)?.options
-    const route = this.config.provider === undefined
-      ? options?.provider && options.model ? { provider: options.provider, model: options.model } : session.requestHeader()?.config
-      : { provider: this.config.provider, model: this.config.model }
     const id = randomUUID()
     cell.generating = manual
     const current = () => !controller.signal.aborted && !this.lifetime.signal.aborted && this.cells.get(session) === cell && cell.controller === controller
@@ -271,14 +280,27 @@ export default class NextMessage extends Service {
       if (!route) throw new Error('No conversation model route is configured')
       const system = `${instructions} Return exactly ${count} suggestions, or [] if no useful follow-up exists.`
       const messages = [createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })]
-      const call = await this.ctx.llm.prepareCall({ provider: route.provider, model: route.model, maxTokens: this.config.maxOutputTokens }, signal, (controls, model) => {
-        const effort = this.config.reasoningEffort ?? model.reasoning?.efforts[0]?.id
-        return effort === undefined ? controls : { ...controls, reasoningEffort: effort }
+      const { llm } = this.ctx
+      const { reasoningEffort, maxOutputTokens } = this.config
+      const controls = { provider: route.provider, model: route.model, maxTokens: maxOutputTokens }
+      let configured = false
+      let call = await llm.prepareCall(reasoningEffort === undefined ? controls : { ...controls, reasoningEffort }, signal, (requested, model) => {
+        configured = true
+        const effort = reasoningEffort === undefined ? model.reasoning?.efforts[0]?.id : undefined
+        return effort === undefined ? requested : { ...requested, reasoningEffort: effort }
       })
+      // Early 0.2 Hosts do not invoke the prepareCall controls callback.
+      if (!configured && reasoningEffort === undefined) {
+        const model = await llm.resolveModelInfo(route.provider, route.model, signal)
+        const effort = model.reasoning?.efforts[0]?.id
+        if (effort !== undefined && effort !== call.config.reasoningEffort) {
+          call = await llm.prepareCall({ ...controls, reasoningEffort: effort }, signal)
+        }
+      }
       signal.throwIfAborted()
       const request = freeze({ ...call.config, system, messages, tools: [], sessionId: session.id, purpose: 'next-message-suggestions' })
       const options = freeze({ ...request, signal })
-      await this.audit(session, { kind: 'request', requestId, sourceSeq, count, pluginVersion: '0.1.5', request })
+      await this.audit(session, { kind: 'request', requestId, sourceSeq, count, pluginVersion: '0.1.6', request })
       signal.throwIfAborted()
       assembler = new BlockAssembler()
       for await (const chunk of call.stream(options)) { signal.throwIfAborted(); assembler.push(chunk) }

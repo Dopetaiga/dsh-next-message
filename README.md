@@ -6,20 +6,20 @@ English | [中文](README.zh.md)
 
 Read the [setup skill](skills/dsh-next-message-setup/SKILL.md) to guide detection, compatible npm installation and configuration in one conversation. You can tell your agent: “Help me install and configure https://github.com/Dopetaiga/dsh-next-message”. A repository link provides instructions for the agent to read; it does not itself authorize or automatically run installation. If GitHub is unreachable, give the agent the npm package name `dsh-next-message` and use the official DSH plugin installer; the installed package provides the local setup skill.
 
-An independent third-party bundle for official **DSH 0.2.1-rc.5**. It modifies no application files and requires no custom Host build.
+An independent third-party bundle for official DSH. It modifies no application files and requires no custom Host build.
 
 Starting with the third completed root assistant turn, one suggestion appears in grey while the composer is empty. `/suggest` refreshes three directions, including during the first two turns or while the main task is running. The empty composer shows “Generating suggestions…” while a manual request is pending. Typing hides this status without changing the draft. Left/right arrows change direction; Tab inserts the selected text into the draft and **never sends it**. Typing hides the suggestion. Menus, IME, modifiers, attachments and normal editing take priority. New human input cancels obsolete generation. Automatic failures remain silent; manual failures show a short inline message. A model may return no suggestions.
 
 ## Install or remove
 
-In official DSH, open **Plugins → Add plugin**, enter `dsh-next-message@0.1.5`, review the package and install it. For mainland China networks, choose the Host’s **npmmirror** source; registry fallback follows Host settings. The npm package contains the prebuilt runtime and setup skill: installation does not fetch GitHub or run package install/build scripts. Another Web/Desktop profile needs its own installation. Existing model credentials are reused through the Host LLM service, without reading or copying credential files. DSH compatibility remains restricted to the declared version.
+In official DSH, open **Plugins → Add plugin**, enter `dsh-next-message@0.1.6`, review the package and install it. For mainland China networks, choose the Host’s **npmmirror** source; registry fallback follows Host settings. The npm package contains the prebuilt runtime and setup skill: installation does not fetch GitHub or run package install/build scripts. Another Web/Desktop profile needs its own installation. Existing model credentials are reused through the Host LLM service, without reading or copying credential files.
 
 After installation, tell your DSH agent: “Use dsh-next-message-setup to configure suggestions”, “Change only my suggestion model”, or “Set this up in a new Web/profile environment”. The plugin registers its bundled [conversational wizard](skills/dsh-next-message-setup/SKILL.md) with the official skill service; the agent can discover and load it locally. It detects current settings and asks only missing choices. Unloading the plugin removes this contribution without copying files into global skill folders. Configuring an installed plugin does not require reinstalling it.
 
 For CLI installation, use the actual profile and the official CLI shipped with your installation. If `dsh` is not on PATH, locate the installed CLI wrapper instead of assuming a path. An external CLI operation on Desktop requires fully quitting the app; the built-in installer operates through the running Host and may request a restart when live application is unavailable.
 
 ```sh
-dsh plugin --profile desktop add dsh-next-message@0.1.5 --registry=https://registry.npmmirror.com
+dsh plugin --profile desktop add dsh-next-message@0.1.6 --registry=https://registry.npmmirror.com
 dsh plugin --profile desktop list --depth 0
 # To remove, fully quit Desktop first when using this external CLI:
 dsh plugin --profile desktop remove dsh-next-message
@@ -57,6 +57,8 @@ Auxiliary requests and responses are audited separately from the main Session lo
 
 ## Compatibility and validation
 
-`engines.dsh` pins the tested release; future official updates are not claimed compatible. The released launcher skips incompatible bundle layers with a warning and disables incompatible explicit plugin entries. Remove this plugin with the official command above if it needs adaptation after an update; do not grant a version exemption merely to force it to load.
+The manifest declares DSH `>=0.2.0-rc.1 <0.3.0-0`. When no suggestion route is configured, a session's pending model choice takes effect for suggestions immediately and persists across reopening. A change to the global default in another session leaves a recorded choice in place.
 
-`tests/verify.mjs` uses the installed official runtime, an isolated temporary `DSH_HOME`, a deterministic model adapter and system Edge. Maintainers need Node >=24.9, an installed compatible official Windows Desktop runtime, system Edge, and a DSH source checkout with its Web test dependencies installed. Run `node tests/verify.mjs <desktop-install-directory> <dsh-source-checkout>`; both paths are required. Playwright is resolved from that checkout only as a test tool; no source Host modules enter the application. Temporary credentials and logs stay under this repository's ignored `.artifacts/` directory. It covers automatic/manual generation, running-task cancellation, audit, owner-only state access, keyboard/menu/IME behavior, actual light/dark contrast and unload cleanup. This is keyless integration evidence, not a claim about live-model suggestion quality.
+Keyless integration passed in Edge with DSH `0.2.0-rc.1` (official npm Web runtime) and `0.2.2-rc.1` (Windows Desktop runtime).
+
+`tests/verify.mjs` uses the official runtime, an isolated temporary `DSH_HOME`, a deterministic model adapter and system Edge. Run `node tests/verify.mjs <runtime-directory> <dsh-source-checkout> <expected-version>` with Node >=24.9. The runtime directory can be the Windows Desktop installation or an installed `@deepseek-ai/dsh` npm package. The source checkout supplies Playwright. Temporary profiles and logs stay under `.artifacts/`. The test covers session model selection, automatic and manual generation, running-task cancellation, audit, owner-only state access, keyboard, menu and IME behavior, light and dark contrast, and unload cleanup.
